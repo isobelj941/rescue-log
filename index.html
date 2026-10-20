@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Rescue log</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--ink:#1d2622;--paper:#f2f4ef;--card:#fff;--line:#d3dad2;--muted:#5c6b63;--euc:#4f7566;--wattle:#e3b01e}
+@media(prefers-color-scheme:dark){:root{--ink:#e8ede7;--paper:#161c19;--card:#202823;--line:#34403a;--muted:#9aa8a0;--euc:#7fa595}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 system-ui,"Segoe UI",sans-serif}
+main{max-width:800px;margin:0 auto;padding:24px 16px 64px}
+h1,h2{font-family:Georgia,serif;font-weight:600;margin:0}h1{font-size:2rem}h2{font-size:1.3rem}
+nav{display:flex;flex-wrap:wrap;gap:22px;margin:10px 0 28px}
+nav a{color:var(--muted);text-decoration:none;font-weight:600;padding:4px 0;border-bottom:3px solid transparent}
+nav a.current{color:var(--ink);border-color:var(--wattle)}
+[hidden]{display:none!important}
+.bar{height:12px;background:var(--line);border-radius:6px;overflow:hidden;margin:8px 0}.bar i{display:block;height:100%;background:var(--wattle)}
+.page{display:none}.page.active{display:block}
+.tally{font-family:Georgia,serif;font-size:1.6rem;margin:0 0 16px}
+.banner{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--euc);border-radius:4px;padding:10px 14px;margin:0 0 18px;font-weight:600}
+.banner[hidden]{display:none}
+.box,form{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--wattle);border-radius:6px;padding:18px;margin-bottom:18px}
+form,.grid{display:grid;gap:14px;grid-template-columns:1fr 1fr}
+.full,form h2{grid-column:1/-1}
+@media(max-width:560px){form,.grid{grid-template-columns:1fr}}
+label,.label{display:grid;gap:4px;font-weight:600;font-size:.95rem}
+.opt{font-weight:400;color:var(--muted)}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:8px 10px;width:100%}
+textarea{min-height:80px;resize:vertical}
+input[type=checkbox]{width:auto}
+:focus-visible{outline:3px solid var(--euc);outline-offset:1px}
+button,.btn{display:inline-block;font:inherit;font-weight:600;text-decoration:none;border-radius:4px;padding:10px 18px;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+.primary{background:var(--wattle);color:#1d2622;border:1px solid #b98d0f}
+.secondary{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.small{padding:4px 12px;font-size:.9rem}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#photoStrip{display:flex;flex-wrap:wrap;gap:10px}
+.photo-item{position:relative}.photo-item img{width:84px;height:84px;object-fit:cover;border-radius:4px;display:block}
+.remove{position:absolute;top:-8px;right:-8px;width:26px;height:26px;padding:0;border-radius:50%;background:var(--ink);color:var(--paper);border:2px solid var(--card);line-height:1}
+.list-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px;margin:32px 0 8px}
+.list-head a{color:var(--euc);font-weight:600}
+.meta,#backupNote,#photoMsg,.msg{color:var(--muted);font-size:.92rem}
+.case{padding:14px 0;border-top:1px solid var(--line)}.case:last-child{border-bottom:1px solid var(--line)}
+.case-top{display:flex;justify-content:space-between;gap:12px}.case h3{margin:0;font-size:1.05rem}
+.notes{margin:6px 0 0;white-space:pre-wrap}
+.thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.thumb{width:72px;height:72px;object-fit:cover;border-radius:4px;cursor:zoom-in}
+.empty{color:var(--muted);padding:18px 0}
+.scroll{overflow-x:auto;margin:12px 0}
+table{border-collapse:collapse;min-width:720px}th{text-align:left;font-size:.85rem}td,th{padding:4px 6px;vertical-align:top}
+td textarea{min-height:44px}
+dialog{border:0;padding:0;background:transparent}dialog::backdrop{background:rgba(0,0,0,.8)}
+dialog img{display:block;max-width:95vw;max-height:90vh;border-radius:4px;cursor:zoom-out}
+</style>
+</head>
+<body>
+<main>
+<h1>Rescue log</h1>
+<nav aria-label="Main"><a href="#home">Home</a><a href="#log">Log a case</a><a href="#all">All cases</a><a href="#photos">Photos</a><a href="#import">Import</a></nav>
+<p id="savedBanner" class="banner" role="status" hidden></p>
+
+<!-- HOME -->
+<section id="page-home" class="page">
+  <p id="tally" class="tally"></p>
+  <a class="btn primary" href="#log">Log a case</a>
+  <div class="list-head"><h2>Goal</h2><button class="secondary small" id="goalBtn" type="button">Set a goal</button></div>
+  <div id="goalBox"></div>
+  <div id="goalForm" class="box grid" hidden>
+    <label>Target number of cases<input id="gTarget" type="number" min="1"></label>
+    <label>Reach it by<input id="gDate" type="date"></label>
+    <label class="full">Cases attended that aren’t in this app <span class="opt">(optional, added to the count)</span><input id="gExtra" type="number" min="0" value="0"></label>
+    <div class="row full"><button class="primary" id="gSave" type="button">Save goal</button><button class="secondary" id="gClear" type="button">Remove goal</button><button class="secondary" id="gCancel" type="button">Cancel</button></div>
+  </div>
+  <div class="list-head"><h2>Memories</h2><button class="secondary small" id="memBtn" type="button">Another memory</button></div>
+  <p id="memLabel" class="meta"></p><div id="memory"></div>
+  <div class="list-head"><h2>Latest cases</h2><a href="#all">See all cases</a></div>
+  <div id="recent"></div>
+  <div class="list-head"><h2>Backup</h2></div>
+  <div class="row"><button class="secondary" id="backupBtn" type="button">Download backup</button><span id="backupNote"></span></div>
+</section>
+
+<!-- LOG / EDIT -->
+<section id="page-log" class="page">
+<form id="caseForm">
+  <h2 id="formTitle">Log a case</h2>
+  <label>Species<input id="species" list="speciesList" required autocomplete="off" placeholder="Start typing, or type your own">
+    <datalist id="speciesList"><option value="Eastern grey kangaroo"><option value="Swamp wallaby"><option value="Common brushtail possum"><option value="Common ringtail possum"><option value="Common wombat"><option value="Short-beaked echidna"><option value="Grey-headed flying-fox"><option value="Blue-tongue lizard"><option value="Tawny frogmouth"><option value="Australian magpie"><option value="Rainbow lorikeet"><option value="Laughing kookaburra"></datalist></label>
+  <label>Outcome<select id="outcome" required></select></label>
+  <label>Suburb<input id="suburb" autocomplete="off"></label>
+  <label>Date attended<input id="date" type="date" required></label>
+  <label class="full">Notes <span class="opt">(optional)</span><textarea id="notes"></textarea></label>
+  <div class="full label"><span>Photos <span class="opt">(optional, up to 5) </span><span id="photoCount" class="opt"></span></span>
+    <div id="photoStrip"></div><input id="photoInput" type="file" accept="image/*" multiple><p id="photoMsg" role="status"></p></div>
+  <div class="row full"><button class="primary" id="saveBtn" type="submit">Save case</button><button class="secondary" id="cancelBtn" type="button">Cancel</button></div>
+</form>
+</section>
+
+<!-- ALL CASES + FILTERS -->
+<section id="page-all" class="page">
+  <div class="box grid">
+    <label class="full">Search<input id="fQ" placeholder="Species, suburb or notes"></label>
+    <label>Outcome<select id="fOutcome"></select></label>
+    <label>Species<select id="fSpecies"></select></label>
+    <label>From date<input id="fFrom" type="date"></label>
+    <label>To date<input id="fTo" type="date"></label>
+    <label>Order<select id="fSort"><option value="new">Newest first</option><option value="old">Oldest first</option></select></label>
+    <div class="row" style="align-items:end"><button class="secondary" id="fClear" type="button">Clear filters</button></div>
+  </div>
+  <div class="list-head"><h2 id="allCount">All cases</h2></div>
+  <div id="allList"></div>
+</section>
+
+<!-- PHOTOS: match by date taken -->
+<section id="page-photos" class="page">
+  <p class="msg">Choose photos from your phone (several at once is fine). The app reads the date each was taken and lists the cases logged on that day. Photos with no date can be set by hand. Each case holds up to 5 photos.</p>
+  <input id="pmInput" type="file" accept="image/*" multiple>
+  <p id="pmMsg" class="msg" role="status"></p>
+  <div id="pmList"></div>
+  <p><button class="primary" id="pmGo" type="button" hidden>Attach</button></p>
+</section>
+
+<!-- IMPORT -->
+<section id="page-import" class="page">
+  <p class="msg">Imports show a preview first. Fix anything, untick what you don’t want, then import. Possible duplicates are unticked.</p>
+  <label class="box">These cases came from<select id="importSource"><option value="wildnet">Wildnet / spreadsheet</option><option value="slack">Slack</option><option value="notes">Notes</option></select></label>
+  <div class="box"><h2>Spreadsheet (Wildnet export, Excel or CSV)</h2><p class="msg">Needs internet to load the spreadsheet reader.</p>
+    <input id="sheetInput" type="file" accept=".xlsx,.xls,.csv"><div id="mapBox"></div></div>
+  <div class="box"><h2>Pasted text or Slack export</h2>
+    <p class="msg">Slack: paste whole pages of Slack search results (keep them newest first, page 1 first), or a request with its \u201cCase outcome\u201d message. Suburb comes from the request, and the date from the message time. Notes: leave a blank line between cases; lines like \u201cSpecies: \u2026\u201d, \u201cSuburb: \u2026\u201d, \u201cDate: \u2026\u201d are picked up.</p>
+    <textarea id="pasteBox" placeholder="Paste text here"></textarea>
+    <div class="grid" style="margin-top:12px">
+      <label>Only outcomes by (part of your Slack name)<input id="pasteWho" placeholder="e.g. your first name in Slack"></label>
+      <label>Year, for days shown without one<input id="pasteYear" type="number"></label>
+      <label>Date to use if none is found<input id="pasteDate" type="date"></label>
+    </div>
+    <p><button class="primary" id="pasteGo" type="button">Preview</button></div>
+  <p id="importDone" class="banner" hidden></p>
+  <div id="preview"></div>
+  <div class="box"><h2>Restore from backup</h2><p class="msg">Adds cases from a backup file, skipping any already here.</p>
+    <input id="restoreInput" type="file" accept=".json"><p id="restoreMsg" class="msg"></p></div>
+</section>
+</main>
+<dialog id="lightbox"><img id="lightboxImg" alt="Photo, full size"></dialog>
+
+<script>
+const $=id=>document.getElementById(id),form=$("caseForm"),MAX=5,STORE="cases";
+const OUTCOMES=["Deceased","Euthanised","Rescued to vet","Rescued to carer","Transport completed","Pouch check complete","Missing/escaped","Other"];
+const opts=(first,sel)=>`<option value=""${sel?" disabled selected":""}>${first}</option>`+OUTCOMES.map(o=>`<option>${o}</option>`).join("");
+$("outcome").innerHTML=opts("Choose one",true);$("fOutcome").innerHTML=opts("All outcomes");
+
+// ---- storage (IndexedDB) ----
+function openDB(){return new Promise((ok,no)=>{const r=indexedDB.open("rescueLog",1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE,{keyPath:"id",autoIncrement:true});r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+async function run(mode,fn){const db=await openDB();return new Promise((ok,no)=>{const t=db.transaction(STORE,mode),q=fn(t.objectStore(STORE));t.oncomplete=()=>ok(q?q.result:undefined);t.onerror=()=>no(t.error)})}
+const addCase=c=>run("readwrite",s=>s.add(c)),putCase=c=>run("readwrite",s=>s.put(c)),getCase=id=>run("readonly",s=>s.get(id)),getAll=()=>run("readonly",s=>s.getAll());
+const addMany=list=>run("readwrite",s=>{list.forEach(c=>s.add(c))});
+
+// ---- helpers ----
+const esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const prettyDate=iso=>{const[y,m,d]=iso.split("-").map(Number);return new Date(y,m-1,d).toLocaleDateString("en-AU",{day:"numeric",month:"short",year:"numeric"})};
+const today=()=>new Date().toLocaleDateString("en-CA");
+const key=c=>[c.date,(c.species||"").toLowerCase(),(c.suburb||"").toLowerCase()].join("|");
+let cases=[],currentPhotos=[],editingId=null,lastListPage="home",bannerTimer;
+function showBanner(msg,el="savedBanner"){const b=$(el);b.textContent=msg;b.hidden=false;clearTimeout(bannerTimer);bannerTimer=setTimeout(()=>b.hidden=true,3500)}
+
+// ---- photos ----
+function resizePhoto(file,max=1200){return new Promise((ok,no)=>{const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{const k=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement("canvas");c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext("2d").drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);ok(c.toDataURL("image/jpeg",.8))};img.onerror=()=>{URL.revokeObjectURL(url);no()};img.src=url})}
+function renderPhotoStrip(){$("photoStrip").innerHTML=currentPhotos.map((p,i)=>`<div class="photo-item"><img src="${p}" alt="Photo ${i+1}"><button type="button" class="remove" data-i="${i}" aria-label="Remove photo ${i+1}">\u00d7</button></div>`).join("");$("photoCount").textContent="("+currentPhotos.length+" of "+MAX+" added)";$("photoInput").disabled=currentPhotos.length>=MAX}
+$("photoInput").onchange=async e=>{const files=[...e.target.files],room=MAX-currentPhotos.length,n=[];if(files.length>room)n.push("Only "+MAX+" photos per case; "+(files.length-room)+" not added.");for(const f of files.slice(0,room)){try{currentPhotos.push(await resizePhoto(f))}catch{n.push("Couldn\u2019t read "+f.name+". Try a JPG or PNG.")}}e.target.value="";$("photoMsg").textContent=n.join(" ");renderPhotoStrip()};
+$("photoStrip").onclick=e=>{const b=e.target.closest(".remove");if(!b)return;currentPhotos.splice(+b.dataset.i,1);$("photoMsg").textContent="";renderPhotoStrip()};
+document.addEventListener("click",e=>{if(e.target.classList.contains("thumb")){$("lightboxImg").src=e.target.src;$("lightbox").showModal()}});
+$("lightbox").onclick=()=>$("lightbox").close();
+
+// ---- pages ----
+const PAGES=["home","log","all","photos","import"];
+async function showPage(){const h=location.hash.slice(1);let page=h,editId=null;if(h.startsWith("edit/")){page="log";editId=Number(h.split("/")[1])}if(!PAGES.includes(page))page="home";if(page==="home"||page==="all")lastListPage=page;
+  document.querySelectorAll(".page").forEach(p=>p.classList.toggle("active",p.id==="page-"+page));
+  document.querySelectorAll("nav a").forEach(a=>a.classList.toggle("current",a.getAttribute("href")==="#"+page));
+  if(page==="log"){if(!await startForm(editId)){location.hash="#"+lastListPage;return}$("species").focus()}
+  scrollTo(0,0)}
+addEventListener("hashchange",showPage);
+async function startForm(editId){form.reset();$("photoMsg").textContent="";editingId=null;currentPhotos=[];
+  if(editId!==null){if(!Number.isInteger(editId))return false;const c=await getCase(editId);if(!c)return false;editingId=editId;
+    $("species").value=c.species;$("outcome").value=c.outcome;$("suburb").value=c.suburb||"";$("date").value=c.date;$("notes").value=c.notes||"";currentPhotos=[...(c.photos||[])]}
+  else $("date").value=today();
+  $("formTitle").textContent=editingId===null?"Log a case":"Edit case";$("saveBtn").textContent=editingId===null?"Save case":"Save changes";renderPhotoStrip();return true}
+
+// ---- lists ----
+function caseRow(c){const p=c.photos||[];return `<div class="case"><div class="case-top"><div><h3>${esc(c.species)}</h3><div class="meta">${prettyDate(c.date)}${c.suburb?" \u00b7 "+esc(c.suburb):""} \u00b7 ${esc(c.outcome)}</div></div><a class="btn secondary small" href="#edit/${c.id}">Edit</a></div>${c.notes?`<p class="notes">${esc(c.notes)}</p>`:""}${p.length?`<div class="thumbs">${p.map(x=>`<img class="thumb" src="${x}" alt="Photo from case">`).join("")}</div>`:""}</div>`}
+const NONE='<p class="empty">No cases yet. Log your first one.</p>';
+async function render(){cases=await getAll();cases.sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id);const n=cases.length;
+  $("tally").textContent="You\u2019ve attended "+n+(n===1?" case.":" cases.");
+  $("recent").innerHTML=n?cases.slice(0,5).map(caseRow).join(""):NONE;
+  const sel=$("fSpecies"),cur=sel.value;sel.innerHTML='<option value="">All species</option>'+[...new Set(cases.map(c=>c.species))].sort().map(s=>`<option value="${esc(s)}">${esc(s)}</option>`).join("");sel.value=cur;
+  if(!cases.some(c=>c.id===memId))pickMemory(false);
+  renderMemory();renderAll();renderGoal();showBackupNote()}
+function renderAll(){const q=$("fQ").value.trim().toLowerCase(),o=$("fOutcome").value,s=$("fSpecies").value,a=$("fFrom").value,b=$("fTo").value;
+  let list=cases.filter(c=>(!o||c.outcome===o)&&(!s||c.species===s)&&(!a||c.date>=a)&&(!b||c.date<=b)&&(!q||[c.species,c.suburb,c.notes].join(" ").toLowerCase().includes(q)));
+  if($("fSort").value==="old")list=[...list].reverse();
+  $("allCount").textContent=list.length===cases.length?"All cases ("+cases.length+")":"Showing "+list.length+" of "+cases.length;
+  $("allList").innerHTML=list.length?list.map(caseRow).join(""):cases.length?'<p class="empty">No cases match these filters.</p>':NONE}
+["fQ","fOutcome","fSpecies","fFrom","fTo","fSort"].forEach(id=>{$(id).addEventListener("input",renderAll);$(id).addEventListener("change",renderAll)});
+$("fClear").onclick=()=>{["fQ","fOutcome","fSpecies","fFrom","fTo"].forEach(id=>$(id).value="");$("fSort").value="new";renderAll()};
+
+// ---- memories: closest case to today's date 1+ years ago (within a week), else a random one ----
+let memId=null,memLabel="";
+function pickMemory(random){if(!cases.length){memId=null;return}
+  if(!random){const t=new Date();t.setHours(0,0,0,0);let best=null;
+    for(const c of cases){const[y,m,d]=c.date.split("-").map(Number),dt=new Date(y,m-1,d);
+      for(let yrs=1;yrs<=15;yrs++){const diff=Math.abs(dt-new Date(t.getFullYear()-yrs,t.getMonth(),t.getDate()))/864e5;if(diff<=7&&(!best||diff<best.diff))best={c,yrs,diff}}}
+    if(best){memId=best.c.id;memLabel=best.yrs===1?"About a year ago":"About "+best.yrs+" years ago";return}}
+  const pool=cases.length>1?cases.filter(c=>c.id!==memId):cases,c=pool[Math.floor(Math.random()*pool.length)];memId=c.id;memLabel="From the archive, "+prettyDate(c.date)}
+function renderMemory(){const c=cases.find(x=>x.id===memId);$("memLabel").textContent=c?memLabel:"";$("memory").innerHTML=c?caseRow(c):'<p class="empty">Memories appear once you have logged a case.</p>'}
+$("memBtn").onclick=()=>{pickMemory(true);renderMemory()};
+
+// ---- goal (kept in this browser; not part of the backup file) ----
+const getGoal=()=>{try{return JSON.parse(localStorage.getItem("goal"))}catch{return null}};
+const toDate=iso=>{const[y,m,d]=iso.split("-").map(Number);return new Date(y,m-1,d)};
+function renderGoal(){const g=getGoal(),box=$("goalBox");$("goalBtn").textContent=g?"Edit goal":"Set a goal";
+  if(!g){box.innerHTML='<p class="empty">Set a target, like 1,000 cases by a chosen date.</p>';return}
+  const now=new Date();now.setHours(0,0,0,0);
+  const total=cases.length+(g.extra||0),left=Math.max(0,g.target-total),pct=Math.min(100,Math.round(total/g.target*100));
+  const days=Math.ceil((toDate(g.date)-now)/864e5),since=new Date(now);since.setDate(since.getDate()-56);
+  const pace=cases.filter(c=>toDate(c.date)>=since).length/8;        // cases per week over the last 8 weeks
+  let msg;
+  if(left===0)msg="Goal reached.";
+  else if(days<0)msg="The deadline has passed with "+left+" to go.";
+  else{const need=left/Math.max(days/7,1/7),proj=Math.round(total+pace*days/7);
+    msg=left+" to go, "+days+" days left: about "+need.toFixed(1)+" a week. Your last 8 weeks averaged "+pace.toFixed(1)+" a week, which would reach about "+proj+" by "+prettyDate(g.date)+"."+(proj>=g.target?" On track.":"")}
+  box.innerHTML=`<p class="tally" style="font-size:1.2rem">${total} of ${g.target} by ${prettyDate(g.date)}</p><div class="bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div><p class="meta">${msg}</p>`}
+$("goalBtn").onclick=()=>{const g=getGoal()||{};$("gTarget").value=g.target||"";$("gDate").value=g.date||"";$("gExtra").value=g.extra||0;$("goalForm").hidden=false};
+$("gCancel").onclick=()=>$("goalForm").hidden=true;
+$("gSave").onclick=()=>{const t=Number($("gTarget").value),d=$("gDate").value;if(!(t>0)||!d){alert("Enter a target number and a date.");return}
+  localStorage.setItem("goal",JSON.stringify({target:t,date:d,extra:Math.max(0,Number($("gExtra").value)||0)}));$("goalForm").hidden=true;renderGoal()};
+$("gClear").onclick=()=>{localStorage.removeItem("goal");$("goalForm").hidden=true;renderGoal()};
+
+// ---- match photos to cases by the date each photo was taken ----
+// Reads the "date taken" stored inside a JPEG (EXIF). Returns "YYYY-MM-DD", or "" if there isn't one.
+async function photoDate(file){
+  try{
+    const v=new DataView(await file.slice(0,262144).arrayBuffer());
+    if(v.getUint16(0)!==0xFFD8)return "";
+    let o=2;
+    while(o+4<v.byteLength){
+      const mk=v.getUint16(o),len=v.getUint16(o+2);
+      if((mk&0xFF00)!==0xFF00||mk===0xFFDA)break;
+      if(mk===0xFFE1&&v.getUint32(o+4)===0x45786966){                 // the "Exif" block
+        const t=o+10,le=v.getUint16(t)===0x4949,u16=q=>v.getUint16(q,le),u32=q=>v.getUint32(q,le);
+        const find=(start,tag)=>{const n=u16(start);for(let i=0;i<n;i++){const e=start+2+i*12;if(u16(e)===tag)return e}return -1};
+        const text=e=>{const n=u32(e+4),off=t+u32(e+8);let s="";for(let i=0;i<n-1;i++)s+=String.fromCharCode(v.getUint8(off+i));return s};
+        const ifd0=t+u32(t+4),ex=find(ifd0,0x8769);let e=-1;
+        if(ex>=0){const sub=t+u32(ex+8);e=find(sub,0x9003);if(e<0)e=find(sub,0x9004)}   // taken, then digitised
+        if(e<0)e=find(ifd0,0x0132);                                                      // file date
+        if(e<0)return "";
+        const m=text(e).match(/^(\d{4}):(\d{2}):(\d{2})/);return m?m[1]+"-"+m[2]+"-"+m[3]:"";
+      }
+      o+=2+len;
+    }
+  }catch{}
+  return "";
+}
+let pm=[];
+const casesOn=d=>cases.filter(c=>c.date===d);
+const autoPick=p=>{const l=casesOn(p.date);p.caseId=l.length===1?l[0].id:""};
+$("pmInput").onchange=async e=>{const files=[...e.target.files];if(!files.length)return;
+  $("pmMsg").textContent="Reading "+files.length+" photos\u2026";pm=[];
+  for(const f of files){try{const date=await photoDate(f);pm.push({data:await resizePhoto(f),date,caseId:""})}catch{}}
+  pm.forEach(autoPick);e.target.value="";
+  $("pmMsg").textContent=pm.length+" photos read."+(pm.some(p=>!p.date)?" Some have no date, so set it by hand.":"");renderPM()};
+function renderPM(){
+  $("pmList").innerHTML=pm.map((p,i)=>`<div class="case"><div class="row"><img class="thumb" src="${p.data}" alt="Photo ${i+1}"><label>Date taken<input type="date" data-i="${i}" data-k="date" value="${esc(p.date)}"></label><label>Case<select data-i="${i}" data-k="caseId"><option value="">Don\u2019t attach</option>${casesOn(p.date).map(c=>`<option value="${c.id}"${c.id===p.caseId?" selected":""}>${esc(c.species)}${c.suburb?", "+esc(c.suburb):""} (${esc(c.outcome)})</option>`).join("")}</select></label></div></div>`).join("");
+  const n=pm.filter(p=>p.caseId!=="").length;$("pmGo").hidden=!pm.length;$("pmGo").textContent="Attach "+n+" photos";$("pmGo").disabled=!n}
+$("pmList").addEventListener("change",e=>{const t=e.target,i=t.dataset.i;if(i===undefined)return;
+  if(t.dataset.k==="date"){pm[i].date=t.value;autoPick(pm[i])}else pm[i].caseId=t.value===""?"":Number(t.value);renderPM()});
+$("pmGo").onclick=async()=>{const by={};pm.filter(p=>p.caseId!=="").forEach(p=>(by[p.caseId]=by[p.caseId]||[]).push(p.data));let done=0,skipped=0;
+  for(const id in by){const c=await getCase(Number(id)),have=c.photos||[],add=by[id].slice(0,MAX-have.length);skipped+=by[id].length-add.length;done+=add.length;
+    await putCase({...c,photos:[...have,...add],updatedAt:new Date().toISOString()})}
+  pm=[];renderPM();await render();$("pmMsg").textContent="";showBanner("Attached "+done+" photos."+(skipped?" "+skipped+" skipped (5 per case).":""));location.hash="#home"};
+
+// ---- save / cancel ----
+form.onsubmit=async e=>{e.preventDefault();
+  const f={species:$("species").value.trim(),outcome:$("outcome").value,suburb:$("suburb").value.trim(),date:$("date").value,notes:$("notes").value.trim(),photos:currentPhotos},was=editingId!==null;
+  if(was){const old=await getCase(editingId);await putCase({...old,...f,updatedAt:new Date().toISOString()})}
+  else await addCase({...f,source:"manual",createdAt:new Date().toISOString()});
+  await render();location.hash="#"+(was?lastListPage:"home");showBanner(was?"Changes saved.":"Case saved.")};
+$("cancelBtn").onclick=()=>location.hash="#"+lastListPage;
+
+// ---- backup / restore ----
+function showBackupNote(){const l=localStorage.getItem("lastBackup"),n=$("backupNote");if(!l){n.textContent="No backup yet. Make one soon.";return}
+  const d=Math.floor((Date.now()-new Date(l))/864e5);n.textContent="Last backup: "+prettyDate(new Date(l).toLocaleDateString("en-CA"))+" ("+(d<1?"today":d+" days ago")+")"+(d>14?". Time for a new one.":"")}
+$("backupBtn").onclick=async()=>{const name="rescue-log-backup-"+today()+".json",blob=new Blob([JSON.stringify(await getAll(),null,2)],{type:"application/json"}),file=new File([blob],name,{type:"application/json"});
+  if(/iPhone|iPad|Android/i.test(navigator.userAgent)&&navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file]})}catch{return}}   // phone: share sheet
+  else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href)}
+  localStorage.setItem("lastBackup",new Date().toISOString());showBackupNote()};
+$("restoreInput").onchange=async e=>{const f=e.target.files[0];if(!f)return;
+  try{const data=JSON.parse(await f.text()),have=new Set(cases.map(key)),add=[];let skip=0;
+    for(const c of data){if(!c||!c.date||!c.species)continue;const n={...c,photos:c.photos||(c.photo?[c.photo]:[])};delete n.photo;delete n.id;if(have.has(key(n))){skip++;continue}have.add(key(n));add.push(n)}
+    await addMany(add);await render();$("restoreMsg").textContent="Restored "+add.length+" cases; skipped "+skip+" already here."}
+  catch{$("restoreMsg").textContent="That doesn\u2019t look like a backup file."}e.target.value=""};
+
+// ---- import: parsing ----
+const MONTHS=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"],p2=n=>String(n).padStart(2,"0");
+function parseDate(s){s=String(s||"");let m=s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return m[1]+"-"+p2(m[2])+"-"+p2(m[3]);
+  m=s.match(/(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);if(m)return(m[3].length===2?"20"+m[3]:m[3])+"-"+p2(m[2])+"-"+p2(m[1]);   // day/month/year
+  m=s.match(/(\d{1,2})(?:st|nd|rd|th)?\s+([A-Za-z]{3,})\.?,?\s+(\d{4})/);if(m){const i=MONTHS.indexOf(m[2].slice(0,3).toLowerCase());if(i>=0)return m[3]+"-"+p2(i+1)+"-"+p2(m[1])}return""}
+function normOutcome(s){const t=String(s||"").trim().toLowerCase(),ex=OUTCOMES.find(o=>o.toLowerCase()===t);if(ex)return ex;
+  if(/euthan|put to sleep|\bpts\b/.test(t))return"Euthanised";if(/deceased|dead|died|dod/.test(t))return"Deceased";if(/pouch/.test(t))return"Pouch check complete";
+  if(/transport/.test(t))return"Transport completed";if(/vet/.test(t))return"Rescued to vet";if(/carer|shelter/.test(t))return"Rescued to carer";
+  if(/missing|escaped|not found|gone/.test(t))return"Missing/escaped";return"Other"}
+function mk(r){const o=normOutcome(r.outcome);let notes=String(r.notes||"");if(o==="Other"&&r.outcome&&String(r.outcome).trim().toLowerCase()!=="other")notes=("Outcome: "+r.outcome+"\n"+notes).trim();
+  return{species:String(r.species||"").trim(),outcome:o,suburb:String(r.suburb||"").trim(),date:r.date||"",notes}}
+function parseEntry(text,fallback){const f={},rest=[];
+  text.split("\n").forEach(l=>{const m=l.match(/^\s*(species|animal|outcome|result|suburb|location|where|date|when|notes?|comments?)\s*[:\-\u2013]\s*(.*)$/i);
+    if(m){const k=m[1].toLowerCase(),key=/species|animal/.test(k)?"species":/outcome|result/.test(k)?"outcome":/suburb|location|where/.test(k)?"suburb":/date|when/.test(k)?"date":"notes";if(key==="notes")rest.push(m[2]);else f[key]=m[2].trim()}
+    else if(l.trim())rest.push(l.trim())});
+  return mk({...f,date:parseDate(f.date)||parseDate(text)||fallback||"",notes:rest.join("\n")})}
+const clean=s=>s.replace(/<@[^>]+>/g,"").replace(/<[^|>]+\|([^>]+)>/g,"$1").replace(/<([^>]+)>/g,"$1").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">");
+
+// ---- import: preview and save ----
+let importRows=[];
+function showPreview(rows){const have=new Set(cases.map(key)),seen=new Set();
+  rows.forEach(r=>{const k=key(r);r.dup=have.has(k)||seen.has(k);seen.add(k);r.include=!!(r.species&&r.date&&!r.dup)});importRows=rows;
+  $("preview").innerHTML=rows.length?`<div class="scroll"><table><tr><th></th><th>Date</th><th>Species</th><th>Outcome</th><th>Suburb</th><th>Notes</th></tr>${rows.map((r,i)=>`<tr><td><input type="checkbox" data-i="${i}" data-k="include"${r.include?" checked":""}>${r.dup?"<br><small>duplicate?</small>":""}</td><td><input type="date" data-i="${i}" data-k="date" value="${esc(r.date)}"></td><td><input data-i="${i}" data-k="species" value="${esc(r.species)}"></td><td><select data-i="${i}" data-k="outcome">${OUTCOMES.map(o=>`<option${o===r.outcome?" selected":""}>${o}</option>`).join("")}</select></td><td><input data-i="${i}" data-k="suburb" value="${esc(r.suburb)}"></td><td><textarea data-i="${i}" data-k="notes">${esc(r.notes)}</textarea></td></tr>`).join("")}</table></div><p><button class="primary" id="doImport" type="button"></button> <span class="msg">Rows need a date and species to import.</span></p>`:'<p class="empty">Nothing found to import. For Slack, include the \u201cCase outcome\u201d messages, and check the name filter.</p>';
+  updateImportBtn()}
+function updateImportBtn(){const b=$("doImport");if(!b)return;const n=importRows.filter(r=>r.include&&r.species&&r.date).length;b.textContent="Import "+n+" selected";b.disabled=!n}
+["input","change"].forEach(ev=>$("preview").addEventListener(ev,e=>{const t=e.target,i=t.dataset.i;if(i===undefined)return;importRows[i][t.dataset.k]=t.type==="checkbox"?t.checked:t.value;updateImportBtn()}));
+$("preview").addEventListener("click",async e=>{if(e.target.id!=="doImport")return;const good=importRows.filter(r=>r.include&&r.species&&r.date),src=$("importSource").value;
+  await addMany(good.map(r=>({species:r.species,outcome:r.outcome,suburb:r.suburb,date:r.date,notes:r.notes,photos:[],source:src,createdAt:new Date().toISOString()})));
+  await render();$("preview").innerHTML="";showBanner("Imported "+good.length+" cases.","importDone")});
+
+// spreadsheet: pick a file, match columns, preview
+let sheetRows=[];
+$("sheetInput").onchange=async e=>{const f=e.target.files[0];if(!f)return;
+  if(!window.XLSX){$("mapBox").textContent="Couldn\u2019t load the spreadsheet reader. Connect to the internet and reload.";return}
+  const wb=XLSX.read(await f.arrayBuffer(),{type:"array",cellDates:true});
+  sheetRows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:"",raw:false,dateNF:"yyyy-mm-dd"});
+  if(!sheetRows.length){$("mapBox").textContent="No rows found on the first sheet.";return}
+  const heads=Object.keys(sheetRows[0]),guess={species:/species|animal/i,outcome:/outcome|result|dispos/i,suburb:/suburb|locat|town/i,date:/date/i,notes:/note|comment|detail/i};
+  $("mapBox").innerHTML=`<p>${sheetRows.length} rows found. Match your columns:</p><div class="grid">${Object.keys(guess).map(k=>{const g=heads.find(h=>guess[k].test(h));return `<label>${k[0].toUpperCase()+k.slice(1)}<select id="map_${k}"><option value="">(none)</option>${heads.map(h=>`<option value="${esc(h)}"${h===g?" selected":""}>${esc(h)}</option>`).join("")}</select></label>`}).join("")}</div><p><label class="row"><input type="checkbox" id="mapRest" checked> Add all other columns to notes</label></p><button class="primary" id="mapGo" type="button">Preview</button>`;
+  e.target.value=""};
+$("mapBox").addEventListener("click",e=>{if(e.target.id!=="mapGo")return;const m={};["species","outcome","suburb","date","notes"].forEach(k=>m[k]=$("map_"+k).value);const used=Object.values(m).filter(Boolean);
+  showPreview(sheetRows.map(r=>{let notes=m.notes?String(r[m.notes]):"";
+    if($("mapRest").checked)Object.keys(r).filter(h=>!used.includes(h)&&String(r[h]).trim()).forEach(h=>notes+=(notes?"\n":"")+h+": "+r[h]);
+    return mk({species:r[m.species],outcome:r[m.outcome],suburb:r[m.suburb],date:parseDate(r[m.date]),notes})}).filter(r=>r.species||r.date||r.notes))});
+
+// Slack paste: each message starts with a header line like "Rescue Request  [12:53 PM]"
+const MSGHEAD=/^.*\S\s+\[\d{1,2}:\d{2}\s?[AP]M\]\s*$/i;
+const DAYHEAD=/^(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day,?\s+([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\s*$/i;
+const LABELS=["species","sex","outcome","notes","suburb","location"];
+const titleCase=s=>s.toLowerCase().replace(/(^|[\s\-'\/])([a-z])/g,(m,a,b)=>a+b.toUpperCase());
+function parseSlackPaste(raw,o){
+  const lines=raw.replace(/\r/g,"").replace(/\[([^\]]*)\]\([^)]*\)/g,"$1").split("\n");   // also strips pasted links
+  if(!lines.some(l=>MSGHEAD.test(l)))return null;
+  const blocks=[];let day="",cur=null;
+  for(const l of lines){
+    const dm=l.trim().match(DAYHEAD);
+    if(dm){const i=MONTHS.indexOf(dm[1].slice(0,3).toLowerCase());if(i>=0)day=(dm[3]||o.year)+"-"+p2(i+1)+"-"+p2(dm[2]);cur=null;continue}
+    if(MSGHEAD.test(l)){cur={day,body:[]};blocks.push(cur);continue}
+    if(cur)cur.body.push(l.trim());
+  }
+  const rows=[];let req=null;
+  for(const b of blocks){
+    const f={};let label=null;
+    for(const l of b.body){const k=l.toLowerCase();if(LABELS.includes(k)){label=k;f[k]=[];continue}if(label&&l)f[label].push(l)}
+    if(f.species||f.outcome){                                   // a case outcome message
+      const by=b.body.find(l=>/^case outcome by/i.test(l));
+      if(o.who&&by&&!by.toLowerCase().includes(o.who.toLowerCase()))continue;
+      const sex=f.sex&&f.sex.length?"Sex: "+f.sex.join(" "):"";
+      rows.push(mk({species:(f.species||[]).join(" "),outcome:(f.outcome||[]).join(" "),
+        suburb:req?req.suburb:(f.suburb||f.location||[]).join(" "),
+        date:(req&&req.day)||b.day||o.fallbackDate||"",
+        notes:[sex,...(f.notes||[])].filter(Boolean).join("\n")}));
+      req=null;
+    }else{                                                      // a request message: "WALLAN - Rescue (S)"
+      const first=b.body.find(l=>l),m=first&&first.match(/^([A-Z][A-Z'.\- ]+?)\s+[-\u2013\u2014]\s+\S/);
+      if(m)req={suburb:titleCase(m[1].trim()),day:b.day};
+    }
+  }
+  return rows;
+}
+// Slack SEARCH RESULTS paste: "28 Sep at 12:36 PM" then a one-line snippet; fields are joined with "..."
+const DATELINE=/^(\d{1,2})\s+([A-Z][a-z]{2})(?:\s+(\d{4}))?\s+at\s+\d{1,2}:\d{2}\s?[AP]M\s*$/;
+const ABBR={egk:"Eastern grey kangaroo"};
+const dayDiff=(a,b)=>Math.abs(Date.parse(a)-Date.parse(b))/864e5;
+function parseSlackSearch(raw,o){
+  const lines=raw.replace(/\r/g,"").split("\n").map(l=>l.trim());
+  const at=[];lines.forEach((l,i)=>{if(DATELINE.test(l))at.push(i)});
+  if(!at.length)return null;
+  let year=Number(o.year),prev=null;
+  const items=at.map(i=>{                                   // results are newest first
+    const m=lines[i].match(DATELINE),mon=MONTHS.indexOf(m[2].toLowerCase());
+    if(m[3])year=Number(m[3]);else if(prev!==null&&mon>prev)year--;   // went back past January
+    prev=mon;
+    const body=[];
+    for(let j=i+1;j<lines.length;j++){const l=lines[j];if(l==="Rescue Request"||/^\d+$/.test(l)||l.startsWith(":bell:"))break;if(l)body.push(l)}
+    const clicks=body.filter(l=>/ clicked (Accept|Case Outcome)\s*$/.test(l));
+    return{date:year+"-"+p2(mon+1)+"-"+p2(m[1]),clicks,snippet:body.filter(l=>!clicks.includes(l)).join(" ")};
+  }).reverse();                                              // now oldest first
+  const mine=s=>!o.who||s.toLowerCase().includes(o.who.toLowerCase());
+  const rows=[];let req=null;
+  for(const it of items){
+    let t=it.snippet;
+    if(/^Case outcome by/i.test(t)){
+      const truncated=/Show more\s*$/.test(t);
+      t=t.replace(/\s*Show more\s*$/,"").replace(/\s*\.\.\.\s*$/,"");
+      const tok=t.split("...").map(x=>x.trim());
+      if(!mine(tok[0]))continue;                              // someone else's outcome
+      const f={};let label=null;
+      for(const x of tok.slice(1)){const k=x.toLowerCase();if(LABELS.includes(k)){label=k;f[k]=[];continue}if(label&&x)f[label].push(x)}
+      const sp=(f.species||[]).join(" "),sex=f.sex&&f.sex.length?"Sex: "+f.sex.join(" "):"";
+      let notes=(f.notes||[]).join(" ... ");if(truncated&&notes)notes+=" [\u2026]";
+      const useReq=req&&dayDiff(req.date,it.date)<=2;
+      rows.push(mk({species:ABBR[sp.toLowerCase()]||sp,outcome:(f.outcome||[]).join(" "),suburb:useReq?req.suburb:"",date:useReq?req.date:it.date,notes:[sex,notes].filter(Boolean).join("\n")}));
+    }else if(!/^Thanks for accepting/i.test(t)){              // a request: "WALLAN - Rescue (S)"
+      const m=t.split("...")[0].match(/^(.+?)\s+-\s+\S/);
+      if(m&&it.clicks.some(c=>/clicked Accept/.test(c)&&mine(c)))req={suburb:titleCase(m[1].trim()),date:it.date};
+    }
+  }
+  return rows;
+}
+$("pasteYear").value=new Date().getFullYear();$("pasteWho").value=localStorage.getItem("slackName")||"";$("pasteWho").oninput=e=>localStorage.setItem("slackName",e.target.value);
+$("pasteGo").onclick=()=>{const txt=$("pasteBox").value.trim();
+  const o={year:$("pasteYear").value||String(new Date().getFullYear()),fallbackDate:$("pasteDate").value,who:$("pasteWho").value.trim()};
+  let rows=txt?parseSlackSearch(txt,o):[];if(rows===null)rows=parseSlackPaste(txt,o);
+  if(rows===null)rows=txt.split(/\n\s*\n/).map(t=>parseEntry(t,o.fallbackDate));
+  showPreview(rows)};
+
+// ---- start ----
+(async()=>{await render();await showPage()})();
+if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();
+</script>
+</body>
+</html>
