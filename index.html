@@ -143,6 +143,7 @@ dialog img{display:block;max-width:95vw;max-height:90vh;border-radius:4px;cursor
   <div class="box"><h2>Restore from backup</h2><p class="msg">Adds cases from a backup file, skipping any already here.</p>
     <input id="restoreInput" type="file" accept=".json"><p id="restoreMsg" class="msg"></p></div>
 </section>
+<p class="msg" style="margin-top:40px">Version: 21 Oct 2026 (restore fix)</p>
 </main>
 <dialog id="lightbox"><img id="lightboxImg" alt="Photo, full size"></dialog>
 
@@ -154,7 +155,7 @@ $("outcome").innerHTML=opts("Choose one",true);$("fOutcome").innerHTML=opts("All
 
 // ---- storage (IndexedDB) ----
 function openDB(){return new Promise((ok,no)=>{const r=indexedDB.open("rescueLog",1);r.onupgradeneeded=()=>r.result.createObjectStore(STORE,{keyPath:"id",autoIncrement:true});r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
-async function run(mode,fn){const db=await openDB();return new Promise((ok,no)=>{const t=db.transaction(STORE,mode),q=fn(t.objectStore(STORE));t.oncomplete=()=>ok(q?q.result:undefined);t.onerror=()=>no(t.error)})}
+async function run(mode,fn){const db=await openDB();return new Promise((ok,no)=>{const t=db.transaction(STORE,mode),q=fn(t.objectStore(STORE));t.oncomplete=()=>ok(q?q.result:undefined);t.onerror=()=>no(t.error);t.onabort=()=>no(t.error)})}
 const addCase=c=>run("readwrite",s=>s.add(c)),putCase=c=>run("readwrite",s=>s.put(c)),getCase=id=>run("readonly",s=>s.get(id)),getAll=()=>run("readonly",s=>s.getAll());
 const addMany=list=>run("readwrite",s=>{list.forEach(c=>s.add(c))});
 
@@ -296,10 +297,15 @@ $("backupBtn").onclick=async()=>{const name="rescue-log-backup-"+today()+".json"
   else{const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href)}
   localStorage.setItem("lastBackup",new Date().toISOString());showBackupNote()};
 $("restoreInput").onchange=async e=>{const f=e.target.files[0];if(!f)return;
-  try{const data=JSON.parse(await f.text()),have=new Set(cases.map(key)),add=[];let skip=0;
-    for(const c of data){if(!c||!c.date||!c.species)continue;const n={...c,photos:c.photos||(c.photo?[c.photo]:[])};delete n.photo;delete n.id;if(have.has(key(n))){skip++;continue}have.add(key(n));add.push(n)}
-    await addMany(add);await render();$("restoreMsg").textContent="Restored "+add.length+" cases; skipped "+skip+" already here."}
-  catch{$("restoreMsg").textContent="That doesn\u2019t look like a backup file."}e.target.value=""};
+  try{const data=JSON.parse(await f.text()),have={},add=[];let skip=0,bad=0;if(!Array.isArray(data))throw new SyntaxError("not a backup");
+    cases.forEach(c=>{const k=key(c);have[k]=(have[k]||0)+1});            // how many of each are already in the app
+    for(const c of data){if(!c||!c.date||!c.species){bad++;continue}
+      const n={...c,photos:c.photos||(c.photo?[c.photo]:[])};delete n.photo;delete n.id;
+      const k=key(n);if(have[k]>0){have[k]--;skip++;continue}add.push(n)}   // repeats inside the backup are kept
+    await addMany(add);await render();
+    $("restoreMsg").textContent="Restored "+add.length+" cases; skipped "+skip+" already here"+(bad?"; "+bad+" unreadable":"")+". This app now holds "+cases.length+" cases."}
+  catch(err){$("restoreMsg").textContent=err instanceof SyntaxError?"That doesn\u2019t look like a backup file.":"Couldn\u2019t save the cases (is the phone low on storage?) "+(err&&err.name||"")}
+  e.target.value=""};
 
 // ---- import: parsing ----
 const MONTHS=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"],p2=n=>String(n).padStart(2,"0");
